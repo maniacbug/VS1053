@@ -29,19 +29,30 @@ VS1053 player(/* cs_pin */ 10,/* dcs_pin */ 7,/* dreq_pin */ 4,/* reset_pin */ 5
  */
 VS1053::RtMidi midi(player);
 
+/**
+ * Instrument details, one on each button
+ */
+
+struct instrument_t
+{
+  uint8_t button;
+  uint8_t note;
+  bool last_state;
+  uint32_t last_triggered_at;
+};
+
+instrument_t instruments[] = {
+  { A0, 41, 0, 0 },
+  { A1, 47, 0, 0 },
+  { A2, 48, 0, 0 },
+  { A3, 38, 0, 0 },
+  { A4, 31, 0, 0 },
+  { 0x85, 49, 0, 0 },
+};
+const int num_instruments = sizeof(instruments)/sizeof(instruments[0]);
+
 // 'buttons' >= 0x80 are analog inputs, e.g. 0x85 will result in checking
 // analogRead(5).
-static uint8_t buttons[] = { A0, A1, A2, A3, A4, 0x85 };
-static uint8_t notes[] = { 
-  41, // Low Floor Tom
-  47, // Low mid tom
-  48, // High mid tom
-  38, // Acoustic Snare 
-  31, // Sticks
-  49, // Crash Cymbal 1  
-};
-static bool last_state[6];
-static uint32_t last_triggered_at[6];
 
 //
 // Application
@@ -63,13 +74,14 @@ void setup(void)
   player.setVolume(0x0);
 
   // Setup pins
-  int i = sizeof(buttons);
+  int i = num_instruments;
   while(i--)
   {
-    if ( buttons[i] < 0x80 )
+    uint8_t button = instruments[i].button;
+    if ( button < 0x80 )
     {
-      pinMode(buttons[i],INPUT);
-      digitalWrite(buttons[i],HIGH);
+      pinMode(button,INPUT);
+      digitalWrite(button,HIGH);
     }
     midi.selectDrums(i);
   }
@@ -81,36 +93,36 @@ void loop(void)
 {
   // Each button is on its own channel.  Update each one
   // separately.
-  int channel = sizeof(buttons);
+  int channel = num_instruments; 
   while (channel--)
   {
     // Check status of corresponding button
     bool state;
-    uint8_t button = buttons[channel];
+    uint8_t button = instruments[channel].button;
     if ( button < 0x80 )
       state = ! digitalRead(button);
     else
     {
       // For piezos, ignore state changes in the first <interval> ms.
       const uint32_t ignore_interval = 50;
-      if ( last_state[channel] && ( millis() - last_triggered_at[channel] < ignore_interval ) )
+      if ( instruments[channel].last_state && ( millis() - instruments[channel].last_triggered_at < ignore_interval ) )
 	state = true;
       else
 	state = analogRead(button & 0x7f );
     }
 
-    if ( state != last_state[channel] )
+    if ( state != instruments[channel].last_state )
     {
-      last_state[channel] = state;
+      instruments[channel].last_state = state;
       if ( state )
       {
-	last_triggered_at[channel] = millis();
-	midi.noteOn(0,notes[channel],0x7f);
+	instruments[channel].last_triggered_at = millis();
+	midi.noteOn(0,instruments[channel].note,0x7f);
       }
       else
       {
-	last_triggered_at[channel] = 0; 
-	midi.noteOff(0,notes[channel]);
+	instruments[channel].last_triggered_at = 0; 
+	midi.noteOff(0,instruments[channel].note);
       }
     }
   }
@@ -154,9 +166,9 @@ void loop_serial(void)
     char c = Serial.read();
     Serial.print(c);
 
-    if ( c >= '1' && c <= ('0' + (int)sizeof(notes) ) )
+    if ( c >= '1' && c <= ('0' + (int)num_instruments ) )
     {
-      uint8_t note = notes[c - '1'];
+      uint8_t note = instruments[c - '1'].note;
       printf_P(PSTR(": note %u\r\n"),note);
       midi.noteOn(0,note,0x7f);
       delay(250);
