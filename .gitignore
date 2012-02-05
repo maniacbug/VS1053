@@ -3,3 +3,4 @@
 .*.swo
 *.orig
 *.bak
+version.h
