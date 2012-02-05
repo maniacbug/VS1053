@@ -240,7 +240,7 @@ void VS1053::begin(void)
 
   //Mp3ReleaseFromReset();
   digitalWrite(reset_pin,HIGH);
-
+  
   //Mp3SetVolume(0xff,0xff); //Declick: Immediately switch analog off
   write_register(SCI_VOL,0xffff); // VOL
 
@@ -254,13 +254,15 @@ void VS1053::begin(void)
   /* Switch on the analog parts */
   //Mp3SetVolume(0xfe,0xfe);
   write_register(SCI_VOL,0xfefe); // VOL
+  
+  printf_P(PSTR("VS1053 still booting\r\n"));
 
   //Mp3WriteRegister (SPI_AUDATA, 31, 64); /* 8kHz */
   write_register(SCI_AUDATA,44101); // 44.1kHz stereo
 
   //Mp3SetVolume(20,20); // Set initial volume (20 = -10dB)
   write_register(SCI_VOL,0x2020); // VOL
-
+  
   //Mp3SoftReset();
   write_register(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
   delay(1);
@@ -272,11 +274,23 @@ void VS1053::begin(void)
   //SPISetFastClock(); // Now you can set high speed SPI clock
   SPI.setClockDivider(SPI_CLOCK_DIV4); // Fastest available
 
+  printf_P(PSTR("VS1053 Set\r\n"));
   printDetails();
   printf_P(PSTR("VS1053 OK\r\n"));
 
   // Having set up our SPI state just the way we like it, save it for next time
   save_our_spi();
+}
+
+/****************************************************************************/
+
+void VS1053::setVolume(uint8_t vol) const
+{
+  uint16_t value = vol;
+  value <<= 8;
+  value |= vol;
+
+  write_register(SCI_VOL,value); // VOL
 }
 
 /****************************************************************************/
@@ -310,7 +324,7 @@ void VS1053::stopSong(void)
 
 void VS1053::print_byte_register(uint8_t reg) const
 {
-  const prog_char *name = (const prog_char*)pgm_read_word( register_names + reg );
+  const char *name = reinterpret_cast<const char*>(pgm_read_word( register_names + reg ));
   char extra_tab = strlen_P(name) < 5 ? '\t' : 0;
   printf_P(PSTR("%02x %S\t%c = 0x%02x\r\n"),reg,name,extra_tab,read_register(reg));
 }
@@ -324,6 +338,31 @@ void VS1053::printDetails(void) const
   int i = 0;
   while ( i <= SCI_num_registers )
     print_byte_register(i++);
+}
+
+/****************************************************************************/
+
+void VS1053::loadUserCode(const uint16_t* buf, size_t len) const
+{
+  while (len)
+  {
+    uint16_t addr = pgm_read_word(buf++); len--;
+    uint16_t n = pgm_read_word(buf++); len--;
+    if (n & 0x8000U) { /* RLE run, replicate n samples */
+      n &= 0x7FFF;
+      uint16_t val = pgm_read_word(buf++); len--;
+      while (n--) {
+	printf_P(PSTR("W %02x: %04x\r\n"),addr,val);
+        write_register(addr, val);
+      }
+    } else {           /* Copy run, copy n samples */
+      while (n--) {
+	uint16_t val = pgm_read_word(buf++); len--;
+	printf_P(PSTR("W %02x: %04x\r\n"),addr,val);
+        write_register(addr, val);
+      }
+    }
+  }
 }
 
 /****************************************************************************/

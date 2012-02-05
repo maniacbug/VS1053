@@ -121,6 +121,16 @@ public:
    * (see fdevopen() in avr/io.h).
    */
   void printDetails(void) const;
+
+  /**
+   * Load a user code plugin
+   *
+   * @param buf Location of memory (in PROGMEM) where the code is
+   * @param len Number of words to load
+   */
+  void loadUserCode(const uint16_t* buf, size_t len) const;
+
+  void setVolume(uint8_t vol) const;
 };
 
 #endif // __VS1053_H__
