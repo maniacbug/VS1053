@@ -91,38 +91,37 @@ void setup(void)
 
 void loop(void)
 {
-  // Each button is on its own channel.  Update each one
-  // separately.
-  int channel = num_instruments; 
-  while (channel--)
+  // Update each instrument independently
+  int i = num_instruments; 
+  while (i--)
   {
     // Check status of corresponding button
     bool state;
-    uint8_t button = instruments[channel].button;
+    uint8_t button = instruments[i].button;
     if ( button < 0x80 )
       state = ! digitalRead(button);
     else
     {
       // For piezos, ignore state changes in the first <interval> ms.
       const uint32_t ignore_interval = 50;
-      if ( instruments[channel].last_state && ( millis() - instruments[channel].last_triggered_at < ignore_interval ) )
+      if ( instruments[i].last_state && ( millis() - instruments[i].last_triggered_at < ignore_interval ) )
 	state = true;
       else
 	state = analogRead(button & 0x7f );
     }
 
-    if ( state != instruments[channel].last_state )
+    if ( state != instruments[i].last_state )
     {
-      instruments[channel].last_state = state;
+      instruments[i].last_state = state;
       if ( state )
       {
-	instruments[channel].last_triggered_at = millis();
-	midi.noteOn(0,instruments[channel].note,0x7f);
+	instruments[i].last_triggered_at = millis();
+	midi.noteOn(0,instruments[i].note,0x7f);
       }
       else
       {
-	instruments[channel].last_triggered_at = 0; 
-	midi.noteOff(0,instruments[channel].note);
+	instruments[i].last_triggered_at = 0; 
+	midi.noteOff(0,instruments[i].note);
       }
     }
   }
