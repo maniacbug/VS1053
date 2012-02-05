@@ -35,10 +35,13 @@ VS1053::RtMidi midi(player);
 
 struct instrument_t
 {
-  uint8_t button;
-  uint8_t note;
-  bool last_state;
-  uint32_t last_triggered_at;
+  uint8_t button; /**< Digital pin# or 0x80 + analog pin# */
+  uint8_t note; /**< MIDI note # */
+  bool last_state; /**< Last time we were updated, were we 'on'? */
+  uint32_t last_triggered_at; /**< When we were last triggered? */
+
+  void begin(void);
+  void update(void);
 };
 
 instrument_t instruments[] = {
@@ -51,8 +54,46 @@ instrument_t instruments[] = {
 };
 const int num_instruments = sizeof(instruments)/sizeof(instruments[0]);
 
-// 'buttons' >= 0x80 are analog inputs, e.g. 0x85 will result in checking
-// analogRead(5).
+void instrument_t::begin(void)
+{
+  if ( button < 0x80 )
+  {
+    pinMode(button,INPUT);
+    digitalWrite(button,HIGH);
+  }
+}
+
+void instrument_t::update(void)
+{
+  // Check status of corresponding button
+  bool state;
+  if ( button < 0x80 )
+    state = ! digitalRead(button);
+  else
+  {
+    // For piezos, ignore state changes in the first <interval> ms.
+    const uint32_t ignore_interval = 50;
+    if ( last_state && ( millis() - last_triggered_at < ignore_interval ) )
+      state = true;
+    else
+      state = analogRead(button & 0x7f );
+  }
+
+  if ( state != last_state )
+  {
+    last_state = state;
+    if ( state )
+    {
+      last_triggered_at = millis();
+      midi.noteOn(0,note,0x7f);
+    }
+    else
+    {
+      last_triggered_at = 0; 
+      midi.noteOff(0,note);
+    }
+  }
+}
 
 //
 // Application
@@ -72,19 +113,12 @@ void setup(void)
   player.begin();
   midi.begin();
   player.setVolume(0x0);
+  midi.selectDrums(0);
 
   // Setup pins
   int i = num_instruments;
   while(i--)
-  {
-    uint8_t button = instruments[i].button;
-    if ( button < 0x80 )
-    {
-      pinMode(button,INPUT);
-      digitalWrite(button,HIGH);
-    }
-    midi.selectDrums(i);
-  }
+    instruments[i].begin();
   
   Serial.println("+READY");
 }
@@ -94,37 +128,7 @@ void loop(void)
   // Update each instrument independently
   int i = num_instruments; 
   while (i--)
-  {
-    // Check status of corresponding button
-    bool state;
-    uint8_t button = instruments[i].button;
-    if ( button < 0x80 )
-      state = ! digitalRead(button);
-    else
-    {
-      // For piezos, ignore state changes in the first <interval> ms.
-      const uint32_t ignore_interval = 50;
-      if ( instruments[i].last_state && ( millis() - instruments[i].last_triggered_at < ignore_interval ) )
-	state = true;
-      else
-	state = analogRead(button & 0x7f );
-    }
-
-    if ( state != instruments[i].last_state )
-    {
-      instruments[i].last_state = state;
-      if ( state )
-      {
-	instruments[i].last_triggered_at = millis();
-	midi.noteOn(0,instruments[i].note,0x7f);
-      }
-      else
-      {
-	instruments[i].last_triggered_at = 0; 
-	midi.noteOff(0,instruments[i].note);
-      }
-    }
-  }
+    instruments[i].update();
 }
 
 void loop_scale(void)
