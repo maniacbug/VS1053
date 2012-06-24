@@ -1,3 +1,3 @@
 #!/bin/sh
 
-jam u1 && expect test.ex 
+jam u0 && expect test.ex 
